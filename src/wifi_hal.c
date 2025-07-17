@@ -839,6 +839,7 @@ INT wifi_hal_setRadioOperatingParameters(wifi_radio_index_t index, wifi_radio_op
                         return RETURN_ERR;
                     }
                     interface->beacon_set = 0;
+                    FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "start _bss 1\n");fflush(out);fclose(out);
                     start_bss(interface);
                     interface->bss_started = true;
                 }
@@ -859,6 +860,7 @@ INT wifi_hal_setRadioOperatingParameters(wifi_radio_index_t index, wifi_radio_op
                     nl80211_enable_ap(interface, false);
                     pthread_mutex_lock(&g_wifi_hal.hapd_lock);
                     hostapd_bss_deinit_no_free(&interface->u.ap.hapd);
+                    FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, " wifi_hal_setRadioOperatingParameters c1\n");fflush(out);fclose(out);
                     hostapd_free_hapd_data(&interface->u.ap.hapd);
                     if (interface->u.ap.hapd.conf->ssid.wpa_psk && !interface->u.ap.hapd.conf->ssid.wpa_psk->next)
                         hostapd_config_clear_wpa_psk(&interface->u.ap.hapd.conf->ssid.wpa_psk);
@@ -1503,6 +1505,7 @@ INT wifi_hal_createVAP(wifi_radio_index_t index, wifi_vap_info_map_t *map)
                         wifi_hal_info_print("%s:%d: interface:%s enable ap\n", __func__,
                             __LINE__, interface->name);
                         interface->beacon_set = 0;
+                        FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "start _bss 2\n");fflush(out);fclose(out);
                         ret = start_bss(interface);
                         interface->bss_started = true;
                     }
@@ -1528,6 +1531,22 @@ INT wifi_hal_createVAP(wifi_radio_index_t index, wifi_vap_info_map_t *map)
                         __LINE__, interface->name);
                     pthread_mutex_lock(&g_wifi_hal.hapd_lock);
                     hostapd_bss_deinit_no_free(&interface->u.ap.hapd);
+                    {FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "wifi_hal_createVAP c2 radioIndex %d\n", index);fflush(out);fclose(out);}
+                    struct hostapd_data *hapd = &interface->u.ap.hapd;
+                    if (hostapd_mld_is_first_bss(hapd) && hapd->mld != NULL && hapd->radius != NULL) { //???3
+                        struct hostapd_data *link;
+                        for_each_mld_link(link, hapd) {
+                            {FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "wifi_hal_createVAP c2 mld link: %s\n", link->conf->iface);fflush(out);fclose(out);}
+                            if (hapd == link)
+                                continue;
+                            if (link->radius == hapd->radius){
+                                link->radius = NULL;
+                                {FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "wifi_hal_createVAP c2 radius = NULL: %s\n", link->conf->iface);fflush(out);fclose(out);}
+                            }
+                            if (link->radius_das == hapd->radius_das)
+                                link->radius_das = NULL;
+                        }
+                    }
                     hostapd_free_hapd_data(&interface->u.ap.hapd);
                     if (interface->u.ap.hapd.conf->ssid.wpa_psk && !interface->u.ap.hapd.conf->ssid.wpa_psk->next)
                         hostapd_config_clear_wpa_psk(&interface->u.ap.hapd.conf->ssid.wpa_psk);
@@ -1545,6 +1564,7 @@ INT wifi_hal_createVAP(wifi_radio_index_t index, wifi_vap_info_map_t *map)
                         wifi_hal_info_print("%s:%d: interface:%s enable ap\n", __func__,
                             __LINE__, interface->name);
                         interface->beacon_set = 0;
+                        FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "start _bss 3\n");fflush(out);fclose(out);
                         ret = start_bss(interface);
                         interface->bss_started = true;
                     }
@@ -1565,6 +1585,7 @@ INT wifi_hal_createVAP(wifi_radio_index_t index, wifi_vap_info_map_t *map)
                     wifi_hal_info_print("%s:%d: interface:%s enable ap\n", __func__,
                         __LINE__, interface->name);
                     interface->beacon_set = 0;
+                    FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "start _bss 4\n");fflush(out);fclose(out);
                     ret = start_bss(interface);
                     interface->bss_started = true;
                 }

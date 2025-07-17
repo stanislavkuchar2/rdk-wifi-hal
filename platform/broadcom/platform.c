@@ -3928,19 +3928,14 @@ void platform_bss_enable(char* ifname, bool enable)
 #endif
 
 #ifdef CONFIG_IEEE80211BE
-//! FIXME: temporary solution, it should be dynamically configured and come from vap configuration
-static struct hostapd_mld MLD_UNIT[] = {
-    { .name = "mld_unit_0", .links = DL_LIST_HEAD_INIT(MLD_UNIT[0].links) },
 #ifdef CONFIG_NO_MLD_ONLY_PRIVATE
-    { .name = "mld_unit_1", .links = DL_LIST_HEAD_INIT(MLD_UNIT[1].links) },
-    { .name = "mld_unit_2", .links = DL_LIST_HEAD_INIT(MLD_UNIT[2].links) },
-    { .name = "mld_unit_3", .links = DL_LIST_HEAD_INIT(MLD_UNIT[3].links) },
-    { .name = "mld_unit_4", .links = DL_LIST_HEAD_INIT(MLD_UNIT[4].links) },
-    { .name = "mld_unit_5", .links = DL_LIST_HEAD_INIT(MLD_UNIT[5].links) },
-    { .name = "mld_unit_6", .links = DL_LIST_HEAD_INIT(MLD_UNIT[6].links) },
-    { .name = "mld_unit_7", .links = DL_LIST_HEAD_INIT(MLD_UNIT[7].links) },
+#define MLD_UNIT_COUNT 8
+#else
+#define MLD_UNIT_COUNT 1
 #endif /* CONFIG_NO_MLD_ONLY_PRIVATE */
-};
+
+static struct hostapd_mld *mlo_mld[MLD_UNIT_COUNT] = {0};
+static struct hostapd_mld *slo_mld[MAX_VAP] = {0};
 
 extern void hostapd_bss_link_deinit(struct hostapd_data *hapd);
 
@@ -3981,14 +3976,20 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
     wifi_interface_info_t *interface;
     struct hostapd_bss_config *conf;
     struct hostapd_data *hapd;
+    wifi_mld_common_info_t *mld;
     struct nlattr *nlattr_vendor;
     mac_addr_str_t mld_addr = {};
+    wifi_vap_info_t *vap;
     unsigned char apply;
 
     interface = (wifi_interface_info_t *)priv;
     conf = &interface->u.ap.conf;
     hapd = &interface->u.ap.hapd;
+    mld = &interface->vap_info.u.bss_info.mld_info.common_info;
+    vap = &interface->vap_info;
 
+    wifi_hal_dbg_print("Stano prepare mlo msg ------ hapd: %p vap_index:%d iface:%s\n",
+        hapd, vap->vap_index, conf->iface);
     /*
      * NOTE: According to the new updates of the brcm contract of sending the message
      * `RDK_VENDOR_NL80211_SUBCMD_SET_MLD` we can't send this message for config -1 (`link_id=-1`).
@@ -4030,14 +4031,7 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
     close(fd);
 #endif /* CONFIG_NO_MLD_DOUBLE_APPLY */
 
-    /*
-     * !FIXME: need to look for the last active VAP.
-     *
-     * NOTE: We cannot iterate over `interface_map` because this collection `hash_map t` has a
-     * stateful iterator and any call to `hash_map_get_first` under the loop of this collection
-     * instance invalidates the top-level iterator.
-     */
-    apply = is_wifi_hal_6g_radio_from_interfacename(conf->iface);
+    apply = mld->mld_apply;
 
     wifi_hal_dbg_print(
         "%s:%d iface:%s - mld_ap:%d mld_unit:%u mld_link_id:%u mld_addr:%s apply:%d\n", __func__,
@@ -4090,7 +4084,7 @@ void wifi_drv_get_phy_eht_cap_mac(struct eht_capabilities *eht_capab, struct nla
         eht_capab->mac_cap = WPA_GET_LE16(pos);
     }
 }
-
+#if 0
 /* TODO: temporary solution, mld id should come from vap configuration */
 static unsigned char platform_get_mld_unit_for_ap(int ap_index)
 {
@@ -4117,7 +4111,7 @@ static unsigned char platform_get_mld_unit_for_ap(int ap_index)
     wifi_hal_dbg_print("%s:%d mld_unit:%u for the ap_index:%d\n", __func__, __LINE__, res, ap_index);
     return res;
 }
-
+#endif
 /* TODO: temporary solution, link_id should come from vap configuration */
 static unsigned char platform_get_link_id_for_radio_index(unsigned int radio_index, unsigned int ap_index)
 {
@@ -4154,7 +4148,7 @@ static unsigned char platform_get_link_id_for_radio_index(unsigned int radio_ind
         res, radio_index, ap_index);
     return res;
 }
-
+#if 0
 static unsigned char platform_iface_is_mlo_ap(const char *iface)
 {
     char name[32 + sizeof("_bss_mlo_mode")];
@@ -4168,72 +4162,301 @@ static unsigned char platform_iface_is_mlo_ap(const char *iface)
     wifi_hal_dbg_print("%s:%d mld_ap:%u for the iface:%s\n", __func__, __LINE__, res, iface);
     return res;
 }
+#endif
+static void nvram_update_wl_mlo_apply(const char *iface, unsigned char mlo_apply)
+{
+    char name[32 + sizeof("_mlo_apply")];
+    const char *last_mld_vap = "wl2.4";
+    const char *wl_mlo_apply;
+    unsigned char res;
+    unsigned char is_last_radio = 0;
+
+    is_last_radio = is_wifi_hal_6g_radio_from_interfacename(iface);
+    if (!is_last_radio)
+        return;
+
+    (void)snprintf(name, sizeof(name), "%s_mlo_apply", last_mld_vap);
+    wl_mlo_apply = nvram_get(name);
+    res = ((wl_mlo_apply != NULL) ? atoi(wl_mlo_apply) : 0);
+    if (res == mlo_apply) {
+    wifi_hal_dbg_print("%s:%d Stano Not-Writing nvram %s=%u for the iface:%s\n",
+        __func__, __LINE__, name, mlo_apply, iface);
+        return; /*_bss_mlo_mode is configured properly - no changes are needed */
+    }
+    //nvram_unset??
+    set_decimal_nvram_param(name, mlo_apply);
+    wifi_hal_dbg_print("%s:%d Stano Writing nvram %s=%u for the iface:%s\n",
+        __func__, __LINE__, name, mlo_apply, iface);
+    return;
+}
+
+static INT nvram_update_wl_bss_mlo_mode(const char *iface, unsigned char is_mlo_ap)
+{
+    char name[32 + sizeof("_bss_mlo_mode")];
+    const char *wl_bss_mlo_mode;
+    unsigned char res;
+
+    (void)snprintf(name, sizeof(name), "%s_bss_mlo_mode", iface);
+    wl_bss_mlo_mode = nvram_get(name);
+    res = ((wl_bss_mlo_mode != NULL) ? atoi(wl_bss_mlo_mode) : 0);
+    if (res == is_mlo_ap) {
+    wifi_hal_dbg_print("%s:%d Stano Not-Writing nvram %s=%u for the iface:%s\n",
+        __func__, __LINE__, name, is_mlo_ap, iface);
+        return RETURN_OK; /*_bss_mlo_mode is configured properly - no changes are needed */
+    }
+    //nvram_unset??
+    set_decimal_nvram_param(name, is_mlo_ap);
+    wifi_hal_dbg_print("%s:%d Stano Writing nvram %s=%u for the iface:%s\n",
+        __func__, __LINE__, name, is_mlo_ap, iface);
+    return RETURN_OK;
+}
+
+static INT nvram_update_wl_mlo_config(unsigned int radio_index, int mld_link_id)
+{
+    int mlo_config[4] = {-1, -1, -1, -1};
+    char *wl_mlo_config = NULL;
+    char new_nvram_val[BUF_SIZE];
+
+    if (radio_index >= (sizeof(mlo_config) / sizeof(*mlo_config))) {
+        wifi_hal_error_print("%s:%d: radio_index:%d out of range (max radio_index: %lu)!\n",
+        __func__, __LINE__, radio_index, (sizeof(mlo_config) / sizeof(*mlo_config)) - 1);
+        return RETURN_ERR;
+    }
+    if ((u8)mld_link_id== (u8)NL80211_DRV_LINK_ID_NA) {
+        mld_link_id = -1;
+    }
+
+    wl_mlo_config = nvram_get("wl_mlo_config"); /* Format of nvram wl_mlo_config="-1 -1 -1 -1" */
+    if (wl_mlo_config != NULL) {
+        int ret;
+
+        ret = sscanf(wl_mlo_config, "%d %d %d %d", &mlo_config[0], &mlo_config[1],
+            &mlo_config[2], &mlo_config[3]);
+
+        if ((sizeof(mlo_config) / sizeof(*mlo_config)) == ret &&
+            mlo_config[radio_index] < (int)(sizeof(mlo_config) / sizeof(*mlo_config)) &&
+            mlo_config[radio_index] >= -1) {
+            if (mlo_config[radio_index] == mld_link_id) {
+                return RETURN_OK; /* No corection needed */
+            }
+        }
+    }
+
+
+    mlo_config[radio_index] = mld_link_id;
+    memset(new_nvram_val, 0, sizeof(new_nvram_val));
+    snprintf(new_nvram_val, sizeof(new_nvram_val), "%d %d %d %d", mlo_config[0], mlo_config[1],
+            mlo_config[2], mlo_config[3]);
+    set_string_nvram_param("wl_mlo_config", new_nvram_val);
+    wifi_hal_info_print("%s:%d Stano x2 Updating nvram wl_mlo_config with new value: %s\n",
+        __func__, __LINE__, new_nvram_val);
+    return RETURN_OK;
+}
+
+struct hostapd_mld *create_mld()
+{
+    struct hostapd_mld *mld;
+
+    mld = malloc(sizeof(*mld));
+    memset(mld, 0, sizeof(*mld));
+    dl_list_init(&mld->links);
+
+    return mld;
+}
+
+struct hostapd_mld *get_mlo_mld(unsigned char mld_unit, char *mac)
+{
+    if (mld_unit >= MLD_UNIT_COUNT) {
+        wifi_hal_error_print("%s:%d: mld_unit:%d out of range (MLD_UNIT_COUNT: %d)!\n",
+        __func__, __LINE__, mld_unit, MLD_UNIT_COUNT);
+        return NULL;
+    }
+
+    if (mlo_mld[mld_unit] == NULL) {
+        mlo_mld[mld_unit] = create_mld();
+        snprintf(mlo_mld[mld_unit]->name, sizeof(mlo_mld[mld_unit]->name), "mld_unit_%u", mld_unit);
+        wifi_hal_error_print("%s:%d: create_mld MLO mld_unit:%d\n",
+            __func__, __LINE__, mld_unit);
+
+    }
+    memcpy(mlo_mld[mld_unit]->mld_addr, mac, ETH_ALEN);
+    return mlo_mld[mld_unit];
+}
+
+struct hostapd_mld *get_slo_mld(wifi_vap_index_t vap_index, char *mac)
+{
+    if (vap_index >= MAX_VAP) {
+        wifi_hal_info_print("%s:%d: vap_index:%d out of range (max vap_index: %d)!\n",
+            __func__, __LINE__, vap_index, MAX_VAP - 1);
+        return NULL;
+    }
+
+    if (slo_mld[vap_index] == NULL) {
+        slo_mld[vap_index] = create_mld();
+        snprintf(slo_mld[vap_index]->name, sizeof(slo_mld[vap_index]->name), "slo_mld_id_%u", vap_index);
+        wifi_hal_info_print("%s:%d: create_mld SLO vap_index:%d\n",
+            __func__, __LINE__, vap_index);
+
+    }
+    memcpy(slo_mld[vap_index]->mld_addr, mac, ETH_ALEN);
+    return slo_mld[vap_index];
+}
+
+void mlo_add_link(struct hostapd_data *hapd)
+{
+    hostapd_mld_add_link(hapd);
+
+    if (hapd->mld_link_id == 0) { /* reorganize links to be link with link_id 0 first_bss */
+        int i;
+        int cache_size = 0;
+        struct hostapd_data *hapd_cache[MAX_NUM_RADIOS] = {0};
+
+        wifi_hal_info_print("%s:%d: Stano X7 Adding mld main link\n", __func__, __LINE__);
+
+        for (i = 0; i < MAX_NUM_RADIOS; i++) {
+            if (!hostapd_mld_is_first_bss(hapd)) {
+                hapd_cache[i] = hostapd_mld_get_first_bss(hapd);
+                hostapd_mld_remove_link(hapd_cache[i]);
+                //hostapd_bss_link_deinit(hapd_cache[i]);
+                cache_size++;
+                wifi_hal_info_print("Stanox1 Removed link mld_link_id %d - i: %d\n", hapd_cache[i]->mld_link_id, i);
+            }
+            else {
+                break;
+            }
+        }
+        if (cache_size > 0) {
+            for (int i = 0; i < cache_size; i++) {
+                hostapd_mld_add_link(hapd_cache[i]);
+                wifi_hal_info_print("Stanox1 Link added back: mld_link_id %d idx i:%d \n", hapd_cache[i]->mld_link_id, i);
+            }
+        }
+
+    }
+    wifi_hal_info_print("%s:%d: Stanox1: iface:%s mld->fbss: %p hapd: %p hapd->mld->num_links %d \n",
+        __func__, __LINE__, hapd->conf->iface, hapd->mld->fbss, hapd, hapd->mld->num_links);
+}
 
 int update_hostap_mlo(wifi_interface_info_t *interface)
 {
     struct hostapd_bss_config *conf;
     struct hostapd_data *hapd;
+    struct hostapd_mld *mld;
     wifi_vap_info_t *vap;
+    wifi_mld_common_info_t *mld_conf;
+    BOOL is_mld_ap; /* is 11be AP ? */
+    BOOL is_mlo_ap; /* 11be AP mode: is MLO/SLO  */
+    u8 mld_link_id;
 
     conf = &interface->u.ap.conf;
     hapd = &interface->u.ap.hapd;
     vap = &interface->vap_info;
+    mld_conf = &vap->u.bss_info.mld_info.common_info;
 
-    hostapd_bss_link_deinit(hapd);
+#ifndef CONFIG_NO_MLD_ONLY_PRIVATE
+    if(!is_wifi_hal_vap_private(vap->vap_index)) {
+        wifi_hal_info_print("%s:%d: Stano: Skipping iface:%s vap_name: %s - MLO is dissabled for non private VAPs\n",
+            __func__, __LINE__, conf->iface, vap->vap_name);
+        conf->mld_ap = false;
+        conf->okc = 0;
+        set_mld_unit(conf, -1);
+        hapd->mld_link_id = -1;
+        return RETURN_OK;
+    }
+#endif
 
-    if (get_mld_unit(conf) == (unsigned char)-1) {
-        free(hapd->mld);
+    nvram_update_wl_mlo_apply(conf->iface, mld_conf->mld_apply);
+    nvram_update_wl_mlo_config(vap->radio_index, !conf->disable_11be ? mld_conf->mld_link_id : -1);
+    mld_link_id = platform_get_link_id_for_radio_index(vap->radio_index, vap->vap_index);
+    is_mld_ap = (!conf->disable_11be && (mld_link_id < MAX_NUM_MLD_LINKS));
+    is_mlo_ap = is_mld_ap ? mld_conf->mld_enable : 0;
+    wifi_hal_info_print("%s:%d: Stanox4: iface:%s vap_name: %s - is_mld_ap %d is_mlo_ap %d mld_enable %d\n",
+        __func__, __LINE__, conf->iface, vap->vap_name, is_mld_ap, is_mlo_ap, mld_conf->mld_enable);
+    nvram_update_wl_bss_mlo_mode(conf->iface, is_mlo_ap);
+
+    if (!is_mld_ap) { // can be changed in runtime? and how to change it in runtime?
+        wifi_hal_info_print("%s:%d: Stanox4: iface:%s vap_name: %s - is not operating as MLD AP\n",
+            __func__, __LINE__, conf->iface, vap->vap_name);
+
+        if (hapd->mld != NULL) {
+            wifi_hal_info_print("%s:%d: Stanox4: iface:%s vap_name: %s - is not operating as MLD AP - hostapd_bss_link_deinit\n",
+                __func__, __LINE__, conf->iface, vap->vap_name);
+            hostapd_bss_link_deinit(hapd);
+            hapd->mld = NULL;
+        }
+        //check if configuration changed (is_mld_ap != conf->mld_ap), hapd->mld_link_id != mld_link_id
+        conf->mld_ap = is_mld_ap;
+        set_mld_unit(conf, -1);
+        conf->okc = 0;
+        hapd->mld_link_id = -1;
+        return RETURN_OK;
     }
 
-    set_mld_unit(conf, -1);
-    conf->okc = 0;
-    hapd->mld = NULL;
+    wifi_hal_info_print("%s:%d: Stano x4 MLO/SLO vap_index %d iface: %s MLO MAC:"MACSTR"\n",
+        __func__, __LINE__, vap->vap_index, conf->iface, MAC2STR(mld_conf->mld_addr));
 
-    hapd->mld_link_id = platform_get_link_id_for_radio_index(vap->radio_index, vap->vap_index);
-    conf->mld_ap = (!conf->disable_11be && (hapd->mld_link_id < MAX_NUM_MLD_LINKS));
+    conf->mld_ap = is_mld_ap;
+    //hapd->mld_link_id = mld_link_id; //??? will be here?
 
-    if (conf->mld_ap) {
-        unsigned char is_mlo_ap;
-        unsigned char is_first_bss;
-
-        is_mlo_ap = platform_iface_is_mlo_ap(conf->iface);
-
-        /*
-         * FIXME: This is not final solution, as it should be dynamic and come from the vap
-         * configuration.
-         */
-        if (is_mlo_ap) {
-            set_mld_unit(conf, platform_get_mld_unit_for_ap(vap->vap_index));
-            hapd->mld = &MLD_UNIT[get_mld_unit(conf)];
-
-            /*
-             * NOTE: For MLO, we need to enable okc=1, or disable_pmksa_caching=1, otherwise there
-             * will be problems with PMKID for link AP
-             */
-            conf->okc = 1;
-        } else {
-            hapd->mld = malloc(sizeof(*hapd->mld));
-            os_memset(hapd->mld, 0, sizeof(*hapd->mld));
-            dl_list_init(&hapd->mld->links);
-            snprintf(hapd->mld->name, sizeof(hapd->mld->name), "slo_mld_id_%u", vap->vap_index);
+    if (is_mlo_ap) { /* MLO */
+        wifi_hal_info_print("Stano %s:%d - iface:%s configuring MLO\n",__func__, __LINE__, conf->iface);
+        mld = get_mlo_mld(mld_conf->mld_id, mld_conf->mld_addr);
+        wifi_hal_info_print("Stano %s:%d - iface:%s configuring MLO-1 %p %p\n",__func__, __LINE__, conf->iface, hapd->mld, mld);
+        if (hapd->mld != mld || hapd->mld_link_id != mld_link_id) {
+            if (hapd->mld != NULL) {
+                wifi_hal_info_print("Stano %s:%d - iface:%s configuring MLO - vap_index: %d - hostapd_bss_link_deinit\n",__func__, __LINE__, conf->iface, vap->vap_index);
+                hostapd_bss_link_deinit(hapd);
+            }
+            hapd->mld = mld;
+            hapd->mld_link_id = mld_link_id;
+            wifi_hal_info_print("Stano %s:%d - iface:%s configuring MLO-2 %p %p\n",__func__, __LINE__, conf->iface, hapd->mld, mld);
+            mlo_add_link(hapd);
+            wifi_hal_info_print("Stano %s:%d - iface:%s configuring MLO-3 %p %p\n",__func__, __LINE__, conf->iface, hapd->mld, mld);
         }
+        else // this else will be removed
+            wifi_hal_info_print("Stano %s:%d - iface:%s configuring MLO - vap_index: %d - mld is same - nothing to do\n",__func__, __LINE__, conf->iface, vap->vap_index);
 
-        hostapd_mld_add_link(hapd);
-
-        is_first_bss = hostapd_mld_is_first_bss(hapd);
-
-        if (is_first_bss) {
-            os_memcpy(hapd->mld->mld_addr, hapd->own_addr, ETH_ALEN);
+        /* NOTE: For MLO, we need to enable okc=1, or disable_pmksa_caching=1, otherwise there
+         * will be problems with PMKID for link AP */
+        conf->okc = 1;
+        set_mld_unit(conf, mld_conf->mld_id);
+        wifi_hal_info_print("Stano %s:%d - iface:%s configuring MLO-4 %p %p\n",__func__, __LINE__, conf->iface, hapd->mld, mld);
+    } else { /* SLO */
+        wifi_hal_info_print("Stano %s:%d - iface:%s configuring SLO - vap_index: %d\n",__func__, __LINE__, conf->iface, vap->vap_index);
+        mld = get_slo_mld(vap->vap_index, hapd->own_addr);
+        if (hapd->mld != mld) {
+            if (hapd->mld != NULL) {
+                wifi_hal_info_print("Stano %s:%d - iface:%s configuring SLO - vap_index: %d - hostapd_bss_link_deinit\n",__func__, __LINE__, conf->iface, vap->vap_index);
+                if (!hostapd_mld_is_first_bss(hapd) && hapd->mld && hapd->radius) {//???4
+                    //todo: check if mld is MLO and if it is radius instance of mlo
+                    hapd->radius = NULL;
+                    hapd->radius_das = NULL;
+                    hapd->eapol_auth = NULL;
+                    hapd->eap_cfg = NULL;
+                    {FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "update_hostap_mlo changing MLO link to SLO hapd->radius = NULL mld link: %s\n", conf->iface);fflush(out);fclose(out);}
+                }
+                hostapd_bss_link_deinit(hapd);
+            }
+            hapd->mld = mld;
+            hostapd_mld_add_link(hapd);
         }
-
-        wifi_hal_dbg_print("%s:%d: Setup of first (%d) link (%u) BSS of %s %s for VAP %s\n",
-            __func__, __LINE__, is_first_bss, hapd->mld_link_id, (is_mlo_ap ? "MLO" : "SLO"),
-            hapd->mld->name, vap->vap_name);
+        else // will be removed
+            wifi_hal_info_print("Stano %s:%d - iface:%s configuring SLO - vap_index: %d - mld is same - nothing to do\n",__func__, __LINE__, conf->iface, vap->vap_index);
+        conf->okc = 0;
+        set_mld_unit(conf, -1);
+        hapd->mld_link_id = mld_link_id;
     }
 
-    wifi_hal_info_print("%s:%d: iface:%s - mld_ap:%d mld_unit:%u mld_link_id:%u\n", __func__,
-        __LINE__, conf->iface, conf->mld_ap, get_mld_unit(conf), hapd->mld_link_id);
+    wifi_hal_info_print("Stano %s:%d - iface:%s configuring MLO/SLO-5 %p mld->fbss %p hapd %p\n",
+        __func__, __LINE__, conf->iface, hapd->mld, hapd->mld->fbss, hapd);
+    wifi_hal_info_print("%s:%d: Stanox4 -3: iface:%s vap_name: %s - hapd->mld->num_links %d hapd->mld->name:%s\n",
+            __func__, __LINE__, conf->iface, vap->vap_name, hapd->mld->num_links, hapd->mld->name);
 
+    wifi_hal_info_print("%s:%d: Stano iface:%s - mld_ap:%d mld_unit:%u mld_link_id:%u\n",
+        __func__, __LINE__, conf->iface, conf->mld_ap, get_mld_unit(conf), hapd->mld_link_id);
+
+    //conf->mld_ap = false; //Stano - temporary forced MLO disable
+    wifi_hal_info_print("%s:%d: Stano 2 MLO MAC:"MACSTR"\n", __func__, __LINE__, MAC2STR(hapd->mld->mld_addr));
     return RETURN_OK;
 }
 #endif /* CONFIG_IEEE80211BE */
