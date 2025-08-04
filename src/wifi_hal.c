@@ -1530,6 +1530,37 @@ INT wifi_hal_createVAP(wifi_radio_index_t index, wifi_vap_info_map_t *map)
                         __LINE__, interface->name);
                     pthread_mutex_lock(&g_wifi_hal.hapd_lock);
                     hostapd_bss_deinit_no_free(&interface->u.ap.hapd);
+                    /* Problems to solve:
+                    1. when we are changing non MLO configuration e.g. SSID:
+                        The main link and coresponding links are unchanged and this code will be sufitient - we can use new current hapd instance
+                        Is there any usecase when we will change the attribues only of the first (main) link?
+                        dmcli eRT setv Device.WiFi.AccessPoint.2.X_CISCO_COM_BssMaxNumSta int 99
+                        dmcli eRT setv Device.WiFi.ApplyAccessPointSettings bool true
+                    2. When we are changing links configuration - runtime change of MLO configuration - there are a lot of shared resources in hapd
+                        a) removing non main link and changing to SLO link
+                            SLO bss is the only one mld link and in same time m_ap
+                            but still with radius and other instancess set from previous operation in MLo group
+                            we can't free them because are still used bu MLo group. this can be handled in platform when we are remowing it sam as aut instances
+                        b) remowing main link first - is it allowed usecase????   
+                    3. Do we have implemented hostapd_free_hapd_data(&interface->u.ap.hapd); correctly?
+                        Is it ok to call hostapd_free_hapd_data with already new hapd configuration and old pointers to radius, auth server ...
+                    */
+                    {FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "wifi_hal_createVAP c2 radioIndex %d\n", index);fflush(out);fclose(out);}
+                    struct hostapd_data *hapd = &interface->u.ap.hapd;
+                    if (hostapd_mld_is_first_bss(hapd) && hapd->mld != NULL && hapd->radius != NULL) { //???3
+                        struct hostapd_data *link;
+                        for_each_mld_link(link, hapd) {
+                            {FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "wifi_hal_createVAP c2 mld link: %s\n", link->conf->iface);fflush(out);fclose(out);}
+                            if (hapd == link)
+                                continue;
+                            if (link->radius == hapd->radius){
+                                link->radius = NULL;
+                                {FILE *out = fopen("/tmp/log12.txt", "a");fprintf(out, "wifi_hal_createVAP c2 radius = NULL: %s\n", link->conf->iface);fflush(out);fclose(out);}
+                            }
+                            if (link->radius_das == hapd->radius_das)
+                                link->radius_das = NULL;
+                        }
+                    }
                     hostapd_free_hapd_data(&interface->u.ap.hapd);
                     if (interface->u.ap.hapd.conf->ssid.wpa_psk && !interface->u.ap.hapd.conf->ssid.wpa_psk->next)
                         hostapd_config_clear_wpa_psk(&interface->u.ap.hapd.conf->ssid.wpa_psk);
