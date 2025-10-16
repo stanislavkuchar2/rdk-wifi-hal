@@ -16759,12 +16759,10 @@ bool skip_rnr(bool ap_mld, u8 tbtt_info_len, bool mld_update, struct hostapd_dat
     return false;
 }
 
-static bool add_eid_rnr_bss(struct hostapd_data *hapd, struct hostapd_data *reporting_hapd,
+static bool add_eid_rnr_bss(struct hostapd_data *bss, struct hostapd_data *reporting_hapd,
     u8 *tbtt_count, size_t *len, u8 **pos, u8 **tbtt_count_pos, u8 tbtt_info_len, u8 op_class,
     bool mld_update, int is_bss_tx_interface)
 {
-    struct hostapd_iface *iface = hapd->iface;
-    struct hostapd_data *bss = iface->bss[0];
     u8 bss_param = 0;
     bool ap_mld = false;
     u8 *eid = *pos;
@@ -16775,7 +16773,7 @@ static bool add_eid_rnr_bss(struct hostapd_data *hapd, struct hostapd_data *repo
 
     ignore_broadcast_ssid = bss->conf->ignore_broadcast_ssid;
 #ifdef CONFIG_IEEE80211BE
-    ap_mld = !!hapd->conf->mld_ap;
+    ap_mld = !!bss->conf->mld_ap;
 #ifdef CONFIG_GENERIC_MLO
     /* FIXME How to exclude the hidden link in beacon? */
     ignore_broadcast_ssid &= !hostapd_is_ml_partner(bss, reporting_hapd);
@@ -16811,13 +16809,13 @@ static bool add_eid_rnr_bss(struct hostapd_data *hapd, struct hostapd_data *repo
     if (bss->conf->ssid.short_ssid == reporting_hapd->conf->ssid.short_ssid)
         bss_param |= RNR_BSS_PARAM_SAME_SSID;
 
-    if (iface->conf->mbssid != MBSSID_DISABLED) {
+    if (bss->iconf->mbssid != MBSSID_DISABLED) {
         bss_param |= RNR_BSS_PARAM_MULTIPLE_BSSID;
         if (is_bss_tx_interface)
             bss_param |= RNR_BSS_PARAM_TRANSMITTED_BSSID;
     }
 
-    if (is_6ghz_op_class(hapd->iconf->op_class) && bss->conf->unsol_bcast_probe_resp_interval)
+    if (is_6ghz_op_class(bss->iconf->op_class) && bss->conf->unsol_bcast_probe_resp_interval)
         bss_param |= RNR_BSS_PARAM_UNSOLIC_PROBE_RESP_ACTIVE;
 
     bss_param |= RNR_BSS_PARAM_CO_LOCATED | RNR_BSS_PARAM_MEMBER_CO_LOCATED_ESS;
