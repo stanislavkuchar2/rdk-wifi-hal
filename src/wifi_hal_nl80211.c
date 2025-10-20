@@ -16729,7 +16729,7 @@ static int nl80211_set_channel_dfs_state(void *priv,
 
 #if HOSTAPD_VERSION >= 210 // 2.10
 
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211)
 
 bool skip_rnr(bool ap_mld, u8 tbtt_info_len, bool mld_update, struct hostapd_data *reporting_hapd,
     struct hostapd_data *bss)
@@ -16861,7 +16861,7 @@ static bool add_eid_rnr_bss(struct hostapd_data *bss, struct hostapd_data *repor
 }
 #endif /* defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO) */
 /****************************************************************/
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211)
 
 static size_t add_eid_rnr_iface_len(wifi_radio_info_t *radio,
     wifi_interface_info_t *reporting_interface, size_t *current_len, bool mld_update)
@@ -17032,7 +17032,7 @@ static size_t add_eid_rnr_len(void *priv, size_t *current_len)
     return total_len;
 }
 
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211)
 static size_t add_eid_rnr_mlo_len(void *priv, size_t *current_len)
 {
     wifi_radio_info_t *radio, *reporting_radio;
@@ -17070,12 +17070,12 @@ static size_t wifi_drv_get_rnr_colocation_len(void *priv, size_t *current_len)
     size_t total_len = 0;
 
     total_len += add_eid_rnr_len(priv, current_len);
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211)
     total_len += add_eid_rnr_mlo_len(priv, current_len);
 #endif
     return total_len;
 }
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211)
 static u8 *add_eid_rnr_iface(wifi_radio_info_t *radio, wifi_interface_info_t *reporting_interface,
     u8 *eid, size_t *current_len, bool mld_update)
 {
@@ -17098,13 +17098,17 @@ repeat_rnr:
             len = RNR_HEADER_LEN;
             tbtt_count = 0;
         }
-
         pthread_mutex_lock(&g_wifi_hal.hapd_lock);
         for (; interface_iter != NULL;
             interface_iter = hash_map_get_next(radio->interface_map, interface_iter)) {
-            if (add_eid_rnr_bss(&interface_iter->u.ap.hapd, &reporting_interface->u.ap.hapd,
+            struct hostapd_data *bss = &interface_iter->u.ap.hapd;
+            bool ret = add_eid_rnr_bss(bss, &reporting_interface->u.ap.hapd,
                     &tbtt_count, &len, &eid, &tbtt_count_pos, tbtt_info_len,
-                    radio->oper_param.operatingClass, mld_update, interface_iter == tx_interface))
+                    radio->oper_param.operatingClass, mld_update, interface_iter == tx_interface);
+            {FILE *out = fopen("/tmp/log12.txt", "a");
+                fprintf(out, "RNR loop bss-%s/%s /%p mld_update: %d bss->started %d ret %d...\n",
+                    reporting_interface->u.ap.hapd.conf->iface, bss->conf->iface, bss, mld_update, bss->started, ret); fflush(out);fclose(out);}
+            if (ret)
                 break;
         }
         pthread_mutex_unlock(&g_wifi_hal.hapd_lock);
@@ -17253,7 +17257,7 @@ static u8 *add_eid_rnr(void *priv, u8 *eid, size_t *current_len)
     return eid;
 }
 
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211)
 static u8 *add_eid_rnr_mlo(void *priv, u8 *eid, size_t *current_len)
 {
     wifi_radio_info_t *radio, *reporting_radio;
@@ -17288,10 +17292,15 @@ static u8 *add_eid_rnr_mlo(void *priv, u8 *eid, size_t *current_len)
 
 static u8 *wifi_drv_get_rnr_colocation_ie(void *priv, u8 *eid, size_t *current_len)
 {
+    wifi_interface_info_t *reporting_interface = (wifi_interface_info_t *)priv;
+    {FILE *out = fopen("/tmp/log12.txt", "a"); fprintf(out, "----------------------------------------------------- Start %p\n", eid); fflush(out);fclose(out);}
     eid = add_eid_rnr(priv, eid, current_len);
-#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211) && defined(CONFIG_GENERIC_MLO)
+#if defined(CONFIG_IEEE80211BE) && (HOSTAPD_VERSION >= 211)
     eid = add_eid_rnr_mlo(priv, eid, current_len);
 #endif
+    {FILE *out = fopen("/tmp/log12.txt", "a"); fprintf(out, "%s wifi_drv_get_rnr_colocation_ie current_len %lu...\n",  reporting_interface->u.ap.hapd.conf->iface, *current_len); fflush(out);fclose(out);}
+    {FILE *out = fopen("/tmp/log12.txt", "a"); fprintf(out, "----------------------------------------------------- End %p\n", eid); fflush(out);fclose(out);}
+    wifi_hal_error_print("%s wifi_drv_get_rnr_colocation_ie current_len %lu...\n",  reporting_interface->u.ap.hapd.conf->iface, *current_len);
     return eid;
 }
 
