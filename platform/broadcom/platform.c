@@ -4492,6 +4492,7 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
      * NOTE: The BRCM driver does not support MLO reconfiguration and even sending the same message
      * to the module twice.
      */
+#if 0
 #ifndef CONFIG_NO_MLD_DETECT_DOUBLE_APPLY
     char fname_buff[32 + sizeof("/tmp/.mld_")];
     int fd;
@@ -4503,6 +4504,7 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
     }
     close(fd);
 #endif /* CONFIG_NO_MLD_DOUBLE_APPLY */
+#endif /*#if 0*/
 
     /*
      * !FIXME: need to look for the last active VAP.
@@ -4863,8 +4865,8 @@ int update_hostap_mlo(wifi_interface_info_t *interface)
 #endif
     mld_conf = &vap->u.bss_info.mld_info.common_info;
     nvram_update_wl_mlo_apply(conf->iface, mld_conf->mld_apply, &nvram_changed);
-    nvram_update_wl_mlo_config(vap->radio_index, !conf->disable_11be ? mld_conf->mld_link_id : -1,
-        &nvram_changed);
+    nvram_update_wl_mlo_config(vap->radio_index,
+        mld_conf->mld_link_id< MAX_NUM_MLD_LINKS ? mld_conf->mld_link_id : -1, &nvram_changed);
     old_mld_link_id = hapd->mld_link_id;
     hapd->mld_link_id = platform_get_link_id_for_radio_index(vap->radio_index, vap->vap_index);
     mld_ap = (!conf->disable_11be && (hapd->mld_link_id < MAX_NUM_MLD_LINKS));
