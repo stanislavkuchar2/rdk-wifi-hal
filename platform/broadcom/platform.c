@@ -4640,6 +4640,7 @@ static inline unsigned char get_mld_unit(struct hostapd_bss_config *conf)
     return conf->mld_id;
 }
 
+#define CONFIG_NO_MLD_DETECT_DOUBLE_APPLY    1
 int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
     struct wpa_driver_ap_params *params)
 {
@@ -4655,7 +4656,7 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
     struct hostapd_bss_config *conf;
     struct hostapd_data *hapd;
     struct nlattr *nlattr_vendor;
-    mac_addr_str_t mld_addr = {};
+    mac_addr_str_t mld_addr = {0};
     unsigned char apply;
     unsigned char mld_enable, set_mld_mac = FALSE;
 
@@ -4719,7 +4720,7 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
      * 1. The link address of the MAP's.
      * 2. A complete different address from other AAPs' link addresses.
      */
-    if (params->mld_link_id == 0 && !is_zero_ether_addr(hapd->mld->mld_addr))
+    if (params->mld_ap && params->mld_link_id == 0 && !is_zero_ether_addr(hapd->mld->mld_addr))
         set_mld_mac = TRUE;
 
     wifi_hal_dbg_print(
@@ -5072,10 +5073,10 @@ int update_hostap_mlo(wifi_interface_info_t *interface)
 #endif
     mld_conf = &vap->u.bss_info.mld_info.common_info;
     nvram_update_wl_mlo_apply(conf->iface, mld_conf->mld_apply, &nvram_changed);
-#if 0 /* Disable wl_mlo_config nvram override */
-    nvram_update_wl_mlo_config(vap->radio_index, !conf->disable_11be ? mld_conf->mld_link_id : -1,
-        &nvram_changed);
-#endif
+
+    nvram_update_wl_mlo_config(vap->radio_index,
+        mld_conf->mld_link_id < MAX_NUM_MLD_LINKS ? mld_conf->mld_link_id : -1, &nvram_changed);
+
     old_mld_link_id = hapd->mld_link_id;
     hapd->mld_link_id = platform_get_link_id_for_radio_index(vap->radio_index, vap->vap_index);
     mld_ap = (!conf->disable_11be && (hapd->mld_link_id < MAX_NUM_MLD_LINKS));
