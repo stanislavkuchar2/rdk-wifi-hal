@@ -795,7 +795,7 @@ int platform_vap_enable_update(wifi_vap_info_map_t *vap_map, bool handle_mld)
     int i, j, k, radio_index, vap_index, vap_enabled, is_mlo, mld_unit;
 
     if (vap_map == NULL)
-        return -1;
+        goto do_vap_enable;
 
     for (i = 0; i < g_wifi_hal.num_radios; i++) {
         if (vap_map[i].num_vaps == 0)
@@ -841,6 +841,7 @@ int platform_vap_enable_update(wifi_vap_info_map_t *vap_map, bool handle_mld)
         }
     }
 
+do_vap_enable:
     /* Bring up all non-MLO BSSes */
     for (i = 0; i < MAX_VAP; i++) {
         if (_vap_enable[i] && _vap_mld_unit[i] < 0) {
@@ -1821,6 +1822,7 @@ int platform_set_radio(wifi_radio_index_t index, wifi_radio_operationParam_t *op
     if (_platform_init_done != FALSE) {
         /* Check radio status and bring it up if _platform_init_done is true */
         platform_radio_up(index, TRUE);
+        platform_vap_enable_update(NULL, TRUE);
     }
 #endif /* CONFIG_IEEE80211BE && XB10_PORT */
     return 0;
