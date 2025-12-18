@@ -4653,7 +4653,7 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
 /*
  *  `SERCOMMXER10` does not support the nl mlo vendor commands.
  */
-#ifndef SCXER10_PORT
+#ifdef XB10_PORT
     wifi_interface_info_t *interface;
     struct hostapd_bss_config *conf;
     struct hostapd_data *hapd;
@@ -4757,7 +4757,7 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
         return -1;
     }
     nla_nest_end(*msg_mlo, nlattr_vendor);
-#endif /* SCXER10_PORT */
+#endif /* XB10_PORT */
 
     return 0;
 }
