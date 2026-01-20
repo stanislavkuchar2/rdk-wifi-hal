@@ -17,6 +17,8 @@
   limitations under the License.
  **************************************************************************/
 
+#define CONFIG_NO_MLD_ONLY_PRIVATE
+
 #include <stddef.h>
 #include "wifi_hal.h"
 #if defined(TCXB8_PORT) || defined(XB10_PORT) || defined(SCXER10_PORT) || defined(SCXF10_PORT)
@@ -720,9 +722,9 @@ void platform_mld_update(wifi_vap_info_t *vap)
     int i, mld_unit = -1, vapidx = -1;
     wifi_mld_common_info_t *mld_cmn = &vap->u.bss_info.mld_info.common_info;
 
-    wifi_hal_info_print("### %s: %s radio=%d vap_index=%d mld: enable=%d unit=%d linkid=%d apply=%d ###\n",
+    wifi_hal_info_print("### %s: %s radio=%d vap_index=%d mld: enable=%d unit=%d linkid=%d ###\n",
         __func__, vap->vap_name, vap->radio_index, vap->vap_index, mld_cmn->mld_enable,
-        mld_cmn->mld_id, mld_cmn->mld_link_id, mld_cmn->mld_apply);
+        mld_cmn->mld_id, mld_cmn->mld_link_id);
     if (mld_cmn->mld_enable && mld_cmn->mld_id < MAX_MLD_UNITS) {
         mld_unit = mld_cmn->mld_id;
         vapidx = mld_vapidx[mld_unit][vap->radio_index];
@@ -5080,8 +5082,8 @@ static void nvram_update_wl_mlo_config(unsigned int radio_index, int mld_link_id
         mlo_config[2], mlo_config[3]);
     set_string_nvram_param("wl_mlo_config", new_nvram_val);
     *nvram_changed |=1;
-    wifi_hal_info_print("%s:%d Updating nvram wl_mlo_config with new value: %s\n", __func__,
-        __LINE__, new_nvram_val);
+    wifi_hal_info_print("%s:%d Updating nvram wl_mlo_config: %s => %s\n", __func__,
+        __LINE__, wl_mlo_config, new_nvram_val);
 }
 
 static struct hostapd_mld *get_mlo_mld(unsigned char mld_unit, char *mac)
@@ -5215,7 +5217,7 @@ int update_hostap_mlo(wifi_interface_info_t *interface)
     }
 #endif
     mld_conf = &vap->u.bss_info.mld_info.common_info;
-    nvram_update_wl_mlo_apply(conf->iface, mld_conf->mld_apply, &nvram_changed);
+    nvram_update_wl_mlo_apply(conf->iface, 1, &nvram_changed);
 
     nvram_update_wl_mlo_config(vap->radio_index,
         mld_conf->mld_link_id < MAX_NUM_MLD_LINKS ? mld_conf->mld_link_id : -1, &nvram_changed);
