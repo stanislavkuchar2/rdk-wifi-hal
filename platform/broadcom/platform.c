@@ -721,7 +721,7 @@ void platform_mld_update(wifi_vap_info_t *vap)
     wifi_hal_info_print("### %s: %s radio=%d vap_index=%d mld: enable=%d unit=%d linkid=%d apply=%d ###\n",
         __func__, vap->vap_name, vap->radio_index, vap->vap_index, mld_cmn->mld_enable,
         mld_cmn->mld_id, mld_cmn->mld_link_id, mld_cmn->mld_apply);
-    if (mld_cmn->mld_enable && mld_cmn->mld_id < MLD_UNIT_COUNT) {
+    if (vap->u.bss_info.enabled && mld_cmn->mld_enable && mld_cmn->mld_id < MLD_UNIT_COUNT) {
         mld_unit = mld_cmn->mld_id;
         vapidx = mld_vapidx[mld_unit][vap->radio_index];
         if (vapidx != vap->vap_index) {
@@ -759,7 +759,7 @@ int nl80211_send_mld_apply(wifi_interface_info_t *interface)
         wifi_hal_info_print("### %s: NULL interface ###\n", __func__);
         return -1;
     }
-    wifi_hal_info_print("### %s: mlo_init_map=%d mlo_radio_map=%d on %s ###\n",
+    wifi_hal_info_print("### nl_ %s: mlo_init_map=%d mlo_radio_map=%d on %s ###\n",
         __func__, mlo_init_map, mlo_radio_map, interface->name);
 
     /*
@@ -771,6 +771,49 @@ int nl80211_send_mld_apply(wifi_interface_info_t *interface)
     if ((msg_mlo = nl80211_drv_vendor_cmd_msg(g_wifi_hal.nl80211_id, interface, 0, OUI_COMCAST,
              RDK_VENDOR_NL80211_SUBCMD_SET_MLD)) == NULL ||
         (nlattr_vendor = nla_nest_start(msg_mlo, NL80211_ATTR_VENDOR_DATA)) == NULL ||
+        nla_put_u8(msg_mlo, RDK_VENDOR_ATTR_MLD_CONFIG_APPLY, 1) < 0) {
+        wifi_hal_error_print("### %s: Failed to create NL command ###\n", __func__);
+        nlmsg_free(msg_mlo);
+        return -1;
+    }
+    nla_nest_end(msg_mlo, nlattr_vendor);
+    ret = nl80211_send_and_recv(msg_mlo, NULL, &g_wifi_hal, NULL, NULL);
+
+    wifi_hal_info_print("### %s: ret=%d ###\n", __func__, ret);
+    return ret;
+}
+
+/*
+ * Send SET_MLD subcommand with RDK_VENDOR_ATTR_MLD_ENABLE = false
+ */
+int nl80211_send_mld_vap_disable(wifi_interface_info_t *interface)
+{
+    int ret = 0;
+    struct nl_msg *msg_mlo;
+    struct nlattr *nlattr_vendor;
+    unsigned char mld_enable = 0;
+
+    if (interface == NULL) {
+    /* Any interface can be used to send MLD_CONFIG_APPLY */
+	interface = get_interface_by_vap_index(0);
+    }
+    if (interface == NULL) {
+        wifi_hal_info_print("### %s: NULL interface ###\n", __func__);
+        return -1;
+    }
+    wifi_hal_info_print("### Stano nl_ %s: mlo_init_map=%d mlo_radio_map=%d on %s ###\n",
+        __func__, mlo_init_map, mlo_radio_map, interface->name);
+
+    /*
+     * message format
+     *
+     * NL80211_ATTR_VENDOR_DATA
+     * RDK_VENDOR_ATTR_MLD_CONFIG_APPLY
+     */
+    if ((msg_mlo = nl80211_drv_vendor_cmd_msg(g_wifi_hal.nl80211_id, interface, 0, OUI_COMCAST,
+             RDK_VENDOR_NL80211_SUBCMD_SET_MLD)) == NULL ||
+        (nlattr_vendor = nla_nest_start(msg_mlo, NL80211_ATTR_VENDOR_DATA)) == NULL ||
+        nla_put_u8(msg_mlo, RDK_VENDOR_ATTR_MLD_ENABLE, mld_enable) < 0 ||
         nla_put_u8(msg_mlo, RDK_VENDOR_ATTR_MLD_CONFIG_APPLY, 1) < 0) {
         wifi_hal_error_print("### %s: Failed to create NL command ###\n", __func__);
         nlmsg_free(msg_mlo);
@@ -815,13 +858,13 @@ int platform_vap_enable_update(wifi_vap_info_map_t *vap_map, bool handle_mld)
                         break;
                     }
                 }
-
+                //Stano
                 if (vap_map[i].vap_array[j].vap_mode == wifi_vap_mode_ap)
                     vap_enabled = vap_map[i].vap_array[j].u.bss_info.enabled;
                 else
                     vap_enabled = vap_map[i].vap_array[j].u.sta_info.enabled;
                 _vap_enable[vap_index] = vap_enabled;
-
+                 wifi_hal_error_print("### Stano1- %s: VAP %s en %d is_mlo %d ###\n", __func__, vap_map[i].vap_array[j].vap_name, vap_enabled, is_mlo);
                 if (is_mlo) {
                     if (vap_enabled == FALSE) {
                         /* Check all other MLD BSSes, override if any _vap_enable is true */
@@ -836,6 +879,7 @@ int platform_vap_enable_update(wifi_vap_info_map_t *vap_map, bool handle_mld)
                         }
                     }
                     _mld_enable[mld_unit] = vap_enabled;
+                    wifi_hal_error_print("### Stano2- %s: VAP %s en %d is_mlo %d ###\n", __func__, vap_map[i].vap_array[j].vap_name, vap_enabled, is_mlo);
                 }
             } /*for vap_map[radio_index].vap_array[vap_index]*/
         } /* for each vap_map[radio_index] */
@@ -843,6 +887,7 @@ int platform_vap_enable_update(wifi_vap_info_map_t *vap_map, bool handle_mld)
     /* Bring up all non-MLO BSSes */
     for (i = 0; i < MAX_VAP; i++) {
         if (_vap_enable[i] && _vap_mld_unit[i] < 0) {
+            wifi_hal_error_print("### Stano3- %s: platform_bss_up -i %d vap_en %d ###\n", __func__, i, _vap_enable[i]);
             platform_bss_up(i, _vap_enable[i]);
         }
     }
@@ -854,7 +899,7 @@ int platform_vap_enable_update(wifi_vap_info_map_t *vap_map, bool handle_mld)
     for (k = 0; k < MLD_UNIT_COUNT; k++) {
         if (_mld_enable[k] == FALSE)
             continue;
-        wifi_hal_info_print("### %s: calling platform_mld_up(%d, %d) ###\n",
+        wifi_hal_info_print("### %s Stano: calling platform_mld_up(%d, %d) ###\n",
             __func__, k, _mld_enable[k]);
         platform_mld_up(k, _mld_enable[k]);
     }
@@ -4886,7 +4931,7 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
     (void)msg;
 
     *msg_mlo = NULL;
-
+    wifi_hal_error_print("%s:%d: thread %lu\n", __func__, __LINE__, pthread_self());
 /*
  *  Currently only 'XB10_PORT' support the nl mlo vendor commands.
  */
@@ -4940,7 +4985,7 @@ int nl80211_drv_mlo_msg(struct nl_msg *msg, struct nl_msg **msg_mlo, void *priv,
         set_mld_mac = TRUE;
 
     wifi_hal_dbg_print(
-        "%s:%d iface:%s - mld_ap:%d mld_enab:%d mld_unit:%u mld_link_id:%u mld_addr:%s apply:%d\n", __func__,
+        "### nl_ %s:%d iface:%s - mld_ap:%d mld_enab:%d mld_unit:%u mld_link_id:%u mld_addr:%s apply:%d\n", __func__,
         __LINE__, conf->iface, params->mld_ap, mld_enable, get_mld_unit(conf), params->mld_link_id, mld_addr,
         apply);
 
@@ -5275,6 +5320,7 @@ int update_hostap_mlo(wifi_interface_info_t *interface)
         wifi_hal_info_print("%s:%d: iface:%s MLO is not allowed for this AP\n", __func__, __LINE__, conf->iface);
         return RETURN_OK;
     }
+    wifi_hal_error_print("%s:%d: thread %lu\n", __func__, __LINE__, pthread_self());
 
     mld_conf = &vap->u.bss_info.mld_info.common_info;
     nvram_update_wl_mlo_apply(conf->iface, 1, &nvram_changed);
@@ -5284,7 +5330,7 @@ int update_hostap_mlo(wifi_interface_info_t *interface)
 
     old_mld_link_id = hapd->mld_link_id;
     hapd->mld_link_id = platform_get_link_id_for_radio_index(vap->radio_index, vap->vap_index);
-    mld_ap = (!conf->disable_11be && (hapd->mld_link_id < MAX_NUM_MLD_LINKS));
+    mld_ap = vap->u.bss_info.enabled && (!conf->disable_11be && (hapd->mld_link_id < MAX_NUM_MLD_LINKS));
     nvram_update_wl_bss_mlo_mode(conf->iface, mld_ap ? mld_conf->mld_enable : 0, &nvram_changed);
     if (nvram_changed) {
         wifi_hal_info_print("%s:%d nvram was changed => nvram_commit()\n", __func__, __LINE__);
@@ -5321,12 +5367,15 @@ int update_hostap_mlo(wifi_interface_info_t *interface)
         if (hapd->mld) {
             mlo_remove_link(hapd);
             hapd->mld = NULL;
+            if (!vap->u.bss_info.enabled)
+                nl80211_send_mld_vap_disable(interface);
         }
         conf->mld_ap = mld_ap;
     }
 
-    wifi_hal_info_print("%s:%d: iface:%s - mld_ap:%d mld_unit:%u mld_link_id:%u\n", __func__,
-        __LINE__, conf->iface, conf->mld_ap, get_mld_unit(conf), hapd->mld_link_id);
+    wifi_hal_info_print("%s:%d: iface:%s enabled %d mld_enable: %d mld_ap:%d mld_unit:%u mld_link_id:%u\n",
+        __func__, __LINE__, conf->iface, vap->u.bss_info.enabled, mld_conf->mld_enable,
+        conf->mld_ap, get_mld_unit(conf), hapd->mld_link_id);
 
     return RETURN_OK;
 }
