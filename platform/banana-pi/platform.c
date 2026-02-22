@@ -652,6 +652,17 @@ static int get_sta_stats_handler(struct nl_msg *msg, void *arg)
             sta_flags->set & (1 << NL80211_STA_FLAG_AUTHORIZED);
     }
 
+    mac_addr_str_t     mac_str;
+    to_mac_str(dev->cli_MACAddress, mac_str);
+    mac_addr_str_t     mld_mac_str;
+    to_mac_str(dev->cli_MLDAddr, mld_mac_str);
+
+    wifi_hal_dbg_print("Stano %s/%s- FamesSentAck: %lu FramesSentNoAck: %lu PktSent: %lu BytesSent: %lu "
+         "PktRcv: %lu BytesRcv: %lu\n",
+        mac_str, mld_mac_str,
+        dev->cli_DataFramesSentAck, dev->cli_DataFramesSentNoAck, dev->cli_PacketsSent, dev->cli_BytesSent,
+        dev->cli_PacketsReceived, dev->cli_BytesReceived);
+
     return NL_OK;
 }
 
@@ -667,6 +678,10 @@ static int get_sta_stats(wifi_interface_info_t *interface, mac_address_t mac, wi
     }
 
     nla_put(msg, NL80211_ATTR_MAC, sizeof(mac_address_t), mac);
+
+    mac_addr_str_t     mac_str;
+    to_mac_str(mac, mac_str);
+    wifi_hal_dbg_print("%s:%d Stano NL80211_CMD_GET_STATION %s\n", __func__, __LINE__, mac_str);
 
     ret = nl80211_send_and_recv(msg, get_sta_stats_handler, dev, NULL, NULL);
     if (ret < 0) {
@@ -696,6 +711,8 @@ INT wifi_getApAssociatedDeviceDiagnosticResult3(INT apIndex,
         wifi_hal_stats_error_print("%s:%d Failed to get sta list\n", __func__, __LINE__);
         goto exit;
     }
+    wifi_hal_dbg_print("%s:%d Stano interface %s - sta count %d\n", __func__, __LINE__,
+            interface->name, sta_list.num);
 
     *associated_dev_array = sta_list.num ?
         calloc(sta_list.num, sizeof(wifi_associated_dev3_t)) : NULL;

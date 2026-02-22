@@ -6516,7 +6516,7 @@ static int get_sta_handler(struct nl_msg *msg, void *arg)
     interface = (wifi_interface_info_t *)arg;
 
     nla_parse(tb, NL80211_ATTR_MAX, genlmsg_attrdata(gnlh, 0), genlmsg_attrlen(gnlh, 0), NULL);
-
+    wifi_hal_info_print("%s:%d: Stano 0\n", __func__, __LINE__);
     if (!tb[NL80211_ATTR_IFINDEX]) {
         wifi_hal_error_print("%s:%d: Interface index missing\n", __func__, __LINE__);
         return NL_SKIP;
@@ -6546,9 +6546,11 @@ static int get_sta_handler(struct nl_msg *msg, void *arg)
         wifi_hal_info_print("%s:%d: Failed to parse nested attributes\n", __func__, __LINE__);
         return NL_SKIP;
     }
-
+wifi_hal_info_print("%s:%d: Stano 1\n", __func__, __LINE__);
 #if HOSTAPD_VERSION >= 211 && defined(CONFIG_IEEE80211BE)
+wifi_hal_info_print("%s:%d: Stano 2\n", __func__, __LINE__);
     if (tb[NL80211_ATTR_MLO_LINKS] != NULL) {
+        wifi_hal_info_print("%s:%d: Stano 3\n", __func__, __LINE__);
         struct nlattr *link_nest;
         int rem_links;
         uint8_t link_id;
@@ -6603,6 +6605,7 @@ static int get_sta_handler(struct nl_msg *msg, void *arg)
                     has_link_stats = true;
 
                     link_interface = wifi_hal_get_mld_interface_by_link_id(interface, link_id);
+                     wifi_hal_error_print("%s:%d: BRAYANDEBUG Link ID received from get_sta: %d, link_interface found: %p\n", __func__, __LINE__, link_id, link_interface);
                     if (link_interface != NULL) {
                         notify_sta_listeners(link_interface, sta_mac, link_rssi);
                     }

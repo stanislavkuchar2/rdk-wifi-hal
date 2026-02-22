@@ -3509,6 +3509,18 @@ static int get_sta_stats_handler(struct nl_msg *msg, void *arg)
             stats->cli_DataFramesSentAck, stats->cli_DataFramesSentNoAck,
            stats->cli_PacketsSent, stats->cli_BytesSent);
 
+    mac_addr_str_t     mac_str;
+    to_mac_str(stats->cli_MACAddress, mac_str);
+    mac_addr_str_t     mld_mac_str;
+    to_mac_str(stats->cli_MLDAddr, mld_mac_str);
+
+    wifi_hal_dbg_print("Stano %s/%s- FamesSentAck: %lu FramesSentNoAck: %lu PktSent: %lu BytesSent: %lu "
+         "PktRcv: %lu BytesRcv: %lu\n",
+        mac_str, mld_mac_str,
+        stats->cli_DataFramesSentAck, stats->cli_DataFramesSentNoAck, stats->cli_PacketsSent, stats->cli_BytesSent,
+        stats->cli_PacketsReceived, stats->cli_BytesReceived);
+
+
     /*
      * Assume the default packet size for wifi blaster is 1470
      * Sometimes when the AP is just up, the cli_BytesSent
@@ -3555,6 +3567,11 @@ static int get_sta_stats(wifi_interface_info_t *interface, mac_address_t mac,
         return RETURN_ERR;
     }
     nla_nest_end(msg, nlattr);
+    mac_addr_str_t     mac_str;
+
+    to_mac_str(mac, mac_str);
+    wifi_hal_dbg_print("%s:%d Stano RDK_VENDOR_NL80211_SUBCMD_GET_STATION %s\n", __func__, __LINE__,
+            mac_str);
 
     ret = nl80211_send_and_recv(msg, get_sta_stats_handler, stats, NULL, NULL);
     if (ret) {
@@ -3589,6 +3606,8 @@ INT wifi_getApAssociatedDeviceDiagnosticResult3(INT apIndex,
     *associated_dev_array = sta_list.num ?
         calloc(sta_list.num, sizeof(wifi_associated_dev3_t)) : NULL;
     *output_array_size = sta_list.num;
+    wifi_hal_dbg_print("%s:%d Stano interface %s - sta count %d\n", __func__, __LINE__,
+            interface->name, sta_list.num);
 
     for (i = 0; i < sta_list.num; i++) {
         ret = get_sta_stats(interface, sta_list.macs[i], &(*associated_dev_array)[i]);
