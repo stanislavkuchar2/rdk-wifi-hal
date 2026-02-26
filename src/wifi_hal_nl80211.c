@@ -6427,7 +6427,7 @@ static int kick_device_handler(struct nl_msg *msg, void *arg)
 {
     return NL_SKIP;
 }
-
+//Stano todo: Add parameter mld_enabled, add it also to _wifi_associated_dev wifi_associated_dev_t + add there also capabilities (STR,..)
 static int notify_sta_listeners(wifi_interface_info_t *interface, mac_address_t sta_mac, int rssi)
 {
     mac_addr_str_t sta_mac_str;
@@ -6634,6 +6634,31 @@ static int get_sta_handler(struct nl_msg *msg, void *arg)
 
     wifi_hal_dbg_print("%s:%d: RSSI %d\n", __func__, __LINE__, rssi);
 
+    struct sta_info *sta = ap_get_sta(&interface->u.ap.hapd, sta_mac);
+    if (sta == NULL) {
+        wifi_hal_error_print("%s:%d: " MACSTR "sta_info not found!\n", __func__, __LINE__, MAC2STR(sta_mac));
+        return WIFI_HAL_ERROR;
+    }
+    wifi_hal_error_print("%s:%d: " MACSTR " sta_info found!\n", __func__, __LINE__, MAC2STR(sta_mac));
+
+    for (int link_id = 0; link_id < MAX_NUM_MLD_LINKS; link_id++) {
+		struct mld_link_info *link = &sta->mld_info.links[link_id];
+
+		if (!link->valid) {
+			continue;
+        }
+        has_link_stats = true;
+        wifi_hal_error_print("%s:%d: " MACSTR " link_ID: %d!\n", __func__, __LINE__, MAC2STR(sta_mac), link_id);
+        wifi_interface_info_t *link_interface = wifi_hal_get_mld_interface_by_link_id(interface, link_id);
+        if (link_interface != NULL) {
+            wifi_hal_dbg_print("%s:%d: link_interface: %s RSSI %d\n", __func__, __LINE__,
+                link_interface->name, rssi);
+            notify_sta_listeners(link_interface, sta_mac, rssi+link_id);
+        }
+    }
+    if (has_link_stats) {
+        return NL_SKIP;
+    }
     notify_sta_listeners(interface, sta_mac, rssi);
 
     return NL_SKIP;
