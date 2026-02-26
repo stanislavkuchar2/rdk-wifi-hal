@@ -5803,9 +5803,10 @@ wifi_interface_info_t *wifi_hal_get_mld_interface_by_link_id(wifi_interface_info
                 continue;
             }
 
+            /* x interface->index => interface->vap_info->u.bss_info.mld_info.common_info.mld_id
             if (interface_iter->index != interface->index) {
                 continue;
-            }
+            }*/
 
             if (wifi_hal_get_mld_link_id(interface_iter) == link_id) {
                 return interface_iter;
