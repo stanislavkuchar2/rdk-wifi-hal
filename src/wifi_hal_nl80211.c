@@ -1961,7 +1961,7 @@ int process_frame_mgmt(wifi_interface_info_t *interface, struct ieee80211_mgmt *
         to_mac_str(interface->mac, interface_mac_str);
         to_mac_str(mgmt->sa, sta_mac_str);
         to_mac_str(mgmt->da, frame_da_str);
-        wifi_hal_error_print("%s:%d: interface:%s dropping mgmt frame, interface mac:%s sta mac:%s"
+        wifi_hal_error_print("%s:%d: MLO_TEST interface:%s dropping mgmt frame, interface mac:%s sta mac:%s"
                              " frame da:%s\n",
             __func__, __LINE__, interface->name, interface_mac_str, sta_mac_str, frame_da_str);
         if ((callbacks != NULL) && (callbacks->analytics_callback != NULL)) {
@@ -1974,6 +1974,12 @@ int process_frame_mgmt(wifi_interface_info_t *interface, struct ieee80211_mgmt *
 
     fc = le_to_host16(mgmt->frame_control);
     stype = WLAN_FC_GET_STYPE(fc);
+    mac_addr_str_t  sta_mac_str1, interface_mac_str1, frame_da_str1;
+    to_mac_str(interface->mac, interface_mac_str1);
+    to_mac_str(mgmt->sa, sta_mac_str1);
+    to_mac_str(mgmt->da, frame_da_str1);
+    wifi_hal_error_print("%s:%d: MLO_TEST strype %d interface:%s iface mac:%s sta mac:%s frame da:%s\n",
+        __func__, __LINE__, stype, interface->name, interface_mac_str1, sta_mac_str1, frame_da_str1);
 
     if (is_wifi_hal_rate_limit_block(stype, sta)) {
         return 0;
