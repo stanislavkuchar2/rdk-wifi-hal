@@ -6799,10 +6799,6 @@ static int get_sta_handler(struct nl_msg *msg, void *arg)
 
         for (int link_idx = 0; link_idx < MAX_NUM_RADIOS; link_idx++) {
             if (associated_dev.cli_MLDInfo.cli_LinkInfo[link_idx].cli_Valid) {
-                //Determine assoc link
-                if (associated_dev.cli_MLDInfo.cli_LinkInfo[link_idx].cli_LinkID == mld_assoc_link_id) {
-                    associated_dev.cli_MLDInfo.cli_LinkInfo[link_idx].cli_IsAssocLink = true;
-                }
                 //update vap index for the link
                 int link_id = associated_dev.cli_MLDInfo.cli_LinkInfo[link_idx].cli_LinkID;
                 wifi_interface_info_t *link_iface = wifi_hal_get_mld_interface_by_link_id(interface, link_id);
@@ -6813,6 +6809,18 @@ static int get_sta_handler(struct nl_msg *msg, void *arg)
                     continue;
                 }
                 associated_dev.cli_MLDInfo.cli_LinkInfo[link_idx].cli_VapIndex = link_iface->vap_info.vap_index;
+                /* Determine assoc link and reorder links to have assoc link at index 0 if it is not already. 
+                 * assoc link must be at index 0 */
+                if (link_id == mld_assoc_link_id) {
+                    associated_dev.cli_MLDInfo.cli_LinkInfo[link_idx].cli_IsAssocLink = true;
+                    wifi_hal_dbg_print("%s:%d: Link %d is assoc link\n", __func__, __LINE__, link_id);
+                    if (link_idx != 0) {
+                        wifi_mld_sta_link_info_t temp = associated_dev.cli_MLDInfo.cli_LinkInfo[0];
+                        associated_dev.cli_MLDInfo.cli_LinkInfo[0] = associated_dev.cli_MLDInfo.cli_LinkInfo[link_idx];
+                        associated_dev.cli_MLDInfo.cli_LinkInfo[link_idx] = temp;
+                        wifi_hal_dbg_print("%s:%d: Reordered assoc link %d to index 0\n", __func__, __LINE__, link_id);
+                    }
+                }
             }
         }
     } else if (associated_dev.cli_MLDInfo.cli_MLDSta == true && has_link_stats == false) {
