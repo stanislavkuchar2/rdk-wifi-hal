@@ -1099,6 +1099,21 @@ int platform_set_acs_exclusion_list(unsigned int radioIndex, char* str)
     return RETURN_OK;
 }
 
+/* apsta iovar is per-radio, not per-BSS */
+static int platform_set_apsta(wifi_radio_index_t index, bool enable)
+{
+    int apsta_enable = enable ? 1 : 0;
+    char osifname[IFNAMSIZ] = { 0 };
+
+    snprintf(osifname, sizeof(osifname), "wl%d", index);
+    if (wl_iovar_set(osifname, "apsta", &apsta_enable, sizeof(apsta_enable)) < 0) {
+        wifi_hal_error_print("%s: failed to set apsta %d for %s, err: %d (%s)\n", __func__,
+            apsta_enable, osifname, errno, strerror(errno));
+	return -1;
+    }
+    return 0;
+}
+
 int platform_set_radio_pre_init(wifi_radio_index_t index, wifi_radio_operationParam_t *operationParam)
 {
     if (operationParam == NULL) {
@@ -1117,6 +1132,9 @@ int platform_set_radio_pre_init(wifi_radio_index_t index, wifi_radio_operationPa
         wifi_hal_dbg_print("%s:%d:Could not find radio index:%d\n", __func__, __LINE__, index);
         return RETURN_ERR;
     }
+
+    /* OneWifi designates primary IF as sta, so the radio shall always work in apsta mode */
+    platform_set_apsta(index, TRUE);
 
 #if defined (ENABLED_EDPD)
     int ret = 0;
