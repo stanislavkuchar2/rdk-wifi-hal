@@ -87,18 +87,22 @@ int v_secure_system(const char *command, ...);
 FILE *v_secure_popen(const char *direction, const char *command, ...);
 int v_secure_pclose(FILE *);
 
-#if defined(SCXER10_PORT) && defined(CONFIG_IEEE80211BE) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
+#ifdef CONFIG_IEEE80211BE
+#if defined(XB10_PORT) || (defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)))
+static void platform_set_eht(wifi_radio_index_t index, bool enable);
+static bool platform_is_eht_enabled(wifi_radio_index_t index);
+#endif // defined(XB10_PORT) || (defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)))
+
+#if defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
 static bool l_eht_set = false;
 static int l_eht_interface_count = 0;
 bool (*g_eht_event_notify)(wifi_interface_info_t *interface) = NULL;
-
 static bool platform_radio_state(wifi_radio_index_t index);
-static bool platform_is_eht_enabled(wifi_radio_index_t index);
 static bool platform_set_eht_hal_callback(wifi_interface_info_t *interface);
 static void platform_wait_for_eht(void);
 static void platform_create_bss_states_string(wifi_radio_index_t index, char *cmd, size_t size);
-static void platform_set_eht(wifi_radio_index_t index, bool enable);
-#endif
+#endif // defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
+#endif // CONFIG_IEEE80211BE
 
 #define BUFFER_LENGTH_WIFIDB 256
 #define BUFLEN_128  128
@@ -1252,26 +1256,10 @@ int platform_set_radio_pre_init(wifi_radio_index_t index, wifi_radio_operationPa
     }
 
 #if defined(CONFIG_IEEE80211BE)
-#if defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
+#if defined(XB10_PORT) || (defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)))
     platform_set_eht(index, (operationParam->variant & WIFI_80211_VARIANT_BE) ? true : false);
-#elif defined(XB10_PORT)
-    int eht_enab = (operationParam->variant & WIFI_80211_VARIANT_BE) ? 1 : 0;
-    char interface_name[8];
-
-    snprintf(interface_name, sizeof(interface_name), "wl%d", index);
-    snprintf(param_name, sizeof(param_name), "%s_oper_stands", interface_name);
-    wifi_hal_dbg_print("### %s: radio=%d eht_enab=%d %s=%s ###\n", __FUNCTION__, index,
-        eht_enab, param_name, nvram_get(param_name));
-
-    if (_platform_init_done)
-        platform_radio_up(index, FALSE);
-    sprintf(cmd, "wl -i %s eht enab %d", interface_name, eht_enab);
-    system(cmd);
-    if (_platform_init_done)
-        platform_radio_up(index, TRUE);
 #endif
-#endif
-
+#endif // CONFIG_IEEE80211BE
     return 0;
 }
 
@@ -4529,8 +4517,53 @@ int platform_get_reg_domain(wifi_radio_index_t radioIndex, UINT *reg_domain)
 {
     return RETURN_OK;
 }
+#ifdef CONFIG_IEEE80211BE
 
-#if defined(SCXER10_PORT) && defined(CONFIG_IEEE80211BE) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
+#if defined(XB10_PORT) || (defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)))
+static bool platform_is_eht_enabled(wifi_radio_index_t index)
+{
+    FILE *fp;
+    char eht[16] = { 0 };
+
+    fp = (FILE *)v_secure_popen("r", "wl -i wl%d eht", index);
+    if (fp) {
+        fgets(eht, sizeof(eht), fp);
+        v_secure_pclose(fp);
+    }
+    return (eht[0] == '1') ? true : false;
+}
+#endif // defined(XB10_PORT) || (defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0)))
+
+#if defined(XB10_PORT)
+static void platform_set_eht(wifi_radio_index_t index, bool enable)
+{
+    char interface_name[8];
+    char param_name[NVRAM_NAME_SIZE];
+    char cmd[BUFLEN_1024];
+    bool eht_enabled;
+
+    eht_enabled = platform_is_eht_enabled(index);
+    if (eht_enabled == enable) {
+        return;
+    }
+
+    snprintf(interface_name, sizeof(interface_name), "wl%d", index);
+
+    if (_platform_init_done)
+        platform_radio_up(index, FALSE);
+    snprintf(cmd, sizeof(cmd), "wl -i %s eht enab %d", interface_name, enable);
+    system(cmd);
+    if (_platform_init_done)
+        platform_radio_up(index, TRUE);
+
+    snprintf(param_name, sizeof(param_name), "%s_oper_stands", interface_name);
+    wifi_hal_dbg_print("### %s: radio=%d eht_enab=%d %s=%s ###\n", __FUNCTION__, index,
+        enable, param_name, nvram_get(param_name));
+}
+#endif // XB10_PORT
+
+
+#if defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
 static bool platform_radio_state(wifi_radio_index_t index)
 {
     FILE *fp;
@@ -4542,19 +4575,6 @@ static bool platform_radio_state(wifi_radio_index_t index)
         v_secure_pclose(fp);
     }
     return (radio_state[0] == '1') ? true : false;
-}
-
-static bool platform_is_eht_enabled(wifi_radio_index_t index)
-{
-    FILE *fp;
-    char eht[16]={'\0'};
-
-    fp = (FILE *)v_secure_popen("r", "wl -i wl%d eht", index);
-    if (fp) {
-        fgets(eht, sizeof(eht), fp);
-        v_secure_pclose(fp);
-    }
-    return (eht[0] == '1') ? true : false;
 }
 
 bool platform_set_eht_hal_callback(wifi_interface_info_t *interface)
@@ -4667,9 +4687,7 @@ int platform_set_amsdu_tid(wifi_interface_info_t *interface, uint8_t *amsdu_tid)
     }
     return RETURN_OK;
 }
-#endif
-
-#ifdef CONFIG_IEEE80211BE
+#endif // defined(SCXER10_PORT) && (LINUX_VERSION_CODE < KERNEL_VERSION(5, 0, 0))
 
 static struct hostapd_mld g_mlo_mld[MLD_UNIT_COUNT] = {0};
 extern void hostapd_bss_link_deinit(struct hostapd_data *hapd);
