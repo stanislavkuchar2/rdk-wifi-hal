@@ -904,8 +904,7 @@ static void update_mld_enable(int radio_index, int vap_index, bool vap_enabled)
 static int platform_vap_enable_update(wifi_vap_info_map_t *vap_map, int vap_maps_count,
     int target_radio_index, const wifi_radio_operationParam_t *target_oper_param)
 {
-    int i, j, k, radio_index, vap_index, vap_enabled;
-    bool radio_enabled;
+    int i, j, k, radio_index, vap_index, vap_enabled, radio_enabled;
     wifi_interface_info_t *interface;
 
     if (vap_map != NULL) {
@@ -929,19 +928,23 @@ static int platform_vap_enable_update(wifi_vap_info_map_t *vap_map, int vap_maps
         } /* for each vap_map[radio_index] */
     } /* vap_map != NULL */
     else {
-        for (i = 0; i < MAX_VAP; i++) {
-            interface = get_interface_by_vap_index(i);
-            if (interface == NULL) {
-                wifi_hal_error_print("### %s: vap_idx=%d interface is NULL, skip ###\n", __func__, i);
-                continue;
+        if (target_oper_param != NULL) {
+            for (i = 0; i < MAX_VAP; i++) {
+                interface = get_interface_by_vap_index(i);
+                if (interface == NULL) {
+                    wifi_hal_error_print("### %s: vap_idx=%d interface is NULL, skip ###\n", __func__, i);
+                    continue;
+                }
+                if (interface->vap_info.radio_index == target_radio_index) {
+                    vap_enabled = platform_is_vap_enabled(&interface->vap_info);
+                    radio_enabled = target_oper_param->enable;
+                    vap_enabled = vap_enabled && radio_enabled;
+                    _vap_enable[i] = vap_enabled;
+                    update_mld_enable(target_radio_index, i, vap_enabled);
+                }
             }
-            if (interface->vap_info.radio_index == target_radio_index && target_oper_param != NULL) {
-                vap_enabled = platform_is_vap_enabled(&interface->vap_info);
-                radio_enabled = target_oper_param->enable;
-                vap_enabled = vap_enabled && radio_enabled;
-                _vap_enable[i] = vap_enabled;
-                update_mld_enable(target_radio_index, i, vap_enabled);
-            }
+        } else {
+            wifi_hal_error_print("### %s: target_oper_param=NULL ###\n", __func__);
         }
     }
     /* Bring up all non-MLO BSSes */
