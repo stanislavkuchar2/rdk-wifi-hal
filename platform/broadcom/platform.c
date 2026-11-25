@@ -1014,6 +1014,22 @@ static int platform_set_apsta(wifi_radio_index_t index, bool enable)
 
 #endif /* MLO_ENAB */
 
+/* scb_timeout ioctl is per-radio, not per-BSS */
+static int platform_set_scb_timeout(wifi_radio_index_t index, int val)
+{
+    char osifname[IFNAMSIZ] = { 0 };
+
+    if (index < 0 || index >= g_wifi_hal.num_radios || val < 0)
+        return -1;
+    snprintf(osifname, sizeof(osifname), "wl%d", index);
+    if (wl_ioctl(osifname, WLC_SET_SCB_TIMEOUT, &val, sizeof(val)) < 0) {
+        wifi_hal_error_print("%s: failed to set scb_timeout %d for %s, err: %d (%s)\n", __func__,
+            val, osifname, errno, strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
 int platform_pre_init()
 {
     wifi_hal_dbg_print("%s:%d \r\n", __func__, __LINE__);
@@ -2834,6 +2850,12 @@ int platform_create_vap(wifi_radio_index_t r_index, wifi_vap_info_map_t *map)
     platform_beacon_update(r_index, map, NULL);
 #endif /* FEATURE_HOSTAP_MGMT_FRAME_CTRL */
 #endif /* MLO_ENAB */
+    for (index = 0; index < g_wifi_hal.num_radios; index++) {
+        radio = get_radio_by_rdk_index(index);
+        if (radio == NULL)
+	    continue;
+        platform_set_scb_timeout(index, 30);
+    }
     return 0;
 }
 
